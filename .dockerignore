@@ -1,0 +1,10 @@
+.git
+.github
+.env
+*.zip
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+**/*.tsbuildinfo
+.npm-cache
