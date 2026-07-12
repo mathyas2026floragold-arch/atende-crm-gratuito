@@ -1,1 +1,0 @@
-"""Atende CRM backend."""
