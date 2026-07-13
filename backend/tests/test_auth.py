@@ -28,6 +28,10 @@ class AdminAuthorizationTests(unittest.TestCase):
         encoded = base64.b64encode(b"admin:senha-forte").decode()
         self.assertTrue(is_admin_authorized(f"Basic {encoded}"))
 
+    def test_accepts_admin_username_with_different_case(self):
+        encoded = base64.b64encode(b"Admin:senha-forte").decode()
+        self.assertTrue(is_admin_authorized(f"Basic {encoded}"))
+
     def test_rejects_wrong_basic_password(self):
         encoded = base64.b64encode(b"admin:senha-errada").decode()
         self.assertFalse(is_admin_authorized(f"Basic {encoded}"))

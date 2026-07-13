@@ -38,6 +38,43 @@ class HumanMessage(BaseModel):
     content: str
 
 
+class CompanySettings(BaseModel):
+    name: str
+    access_url: str | None = None
+    ai_context: str | None = None
+
+
+@router.get("/settings")
+async def get_company_settings(authorization: str | None = Header(default=None)):
+    verify_admin(authorization)
+    row = await db().fetchrow(
+        "SELECT name,access_url,ai_context FROM companies WHERE slug=$1 AND active=true",
+        get_settings().default_company_slug,
+    )
+    if not row:
+        raise HTTPException(404, "Empresa não encontrada")
+    return dict(row)
+
+
+@router.put("/settings")
+async def update_company_settings(body: CompanySettings, authorization: str | None = Header(default=None)):
+    verify_admin(authorization)
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(422, "Informe o nome da empresa")
+    row = await db().fetchrow(
+        """UPDATE companies SET name=$2,access_url=$3,ai_context=$4
+        WHERE slug=$1 AND active=true RETURNING name,access_url,ai_context""",
+        get_settings().default_company_slug,
+        name,
+        (body.access_url or "").strip() or None,
+        (body.ai_context or "").strip() or None,
+    )
+    if not row:
+        raise HTTPException(404, "Empresa não encontrada")
+    return dict(row)
+
+
 @router.post("/conversations/{conversation_id}/messages")
 async def send_human_message(
     conversation_id: UUID,

@@ -56,7 +56,15 @@ async def process_message(event: dict) -> None:
         return
     context = company["ai_context"] or "Atenda conforme as informações fornecidas pela empresa."
     messages = [dict(row) for row in reversed(await repository.history(conversation["id"]))]
-    answer = await gemini.answer(event["text"], messages, context, event.get("media_base64"), event.get("mime_type"))
-    await evolution.typing(event["phone"], 2)
+    try:
+        answer = await gemini.answer(event["text"], messages, context, event.get("media_base64"), event.get("mime_type"))
+    except Exception:
+        # Uma falha temporária ou chave inválida do Gemini não pode paralisar o WhatsApp.
+        answer = gemini.demo_answer(event["text"])
+    try:
+        await evolution.typing(event["phone"], 2)
+    except Exception:
+        # O indicador de digitação é apenas visual; a mensagem ainda deve ser enviada.
+        pass
     await evolution.send_text(event["phone"], answer)
     await repository.save_message(conversation["id"], "out", answer, None)

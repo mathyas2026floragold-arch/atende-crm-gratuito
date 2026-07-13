@@ -657,16 +657,45 @@ function SettingsView({ apiOnline, showNotice }: { apiOnline: boolean; showNotic
   const [company, setCompany] = useState("Minha Empresa");
   const [access, setAccess] = useState("https://seu-link-de-acesso");
   const [context, setContext] = useState("Descreva aqui seus produtos, valores, regras e respostas autorizadas.");
-  function save() {
-    localStorage.setItem("atende-settings", JSON.stringify({ company, access, context }));
-    showNotice(apiOnline ? "Prévia salva. Aplique os mesmos dados no Supabase." : "Configuração salva neste navegador.");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!apiOnline) return;
+    crmApi<{ name: string; access_url?: string | null; ai_context?: string | null }>("/settings")
+      .then((data) => {
+        setCompany(data.name);
+        setAccess(data.access_url || "");
+        setContext(data.ai_context || "");
+      })
+      .catch((error) => showNotice(error instanceof Error ? error.message : "Não foi possível carregar as configurações."));
+  }, [apiOnline]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function save() {
+    if (!company.trim() || saving) return;
+    setSaving(true);
+    try {
+      if (apiOnline) {
+        await crmApi("/settings", {
+          method: "PUT",
+          body: JSON.stringify({ name: company, access_url: access, ai_context: context }),
+        });
+        showNotice("Configurações salvas no sistema.");
+      } else {
+        localStorage.setItem("atende-settings", JSON.stringify({ company, access, context }));
+        showNotice("Configuração salva somente neste navegador.");
+      }
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Não foi possível salvar as configurações.");
+    } finally {
+      setSaving(false);
+    }
   }
   return (
     <div className="page narrow-page settings-page">
       <div className="section-title"><div><h2>Configurações da empresa</h2><p>Personalize o sistema para qualquer tipo de negócio.</p></div><span className={`mode-pill ${apiOnline ? "real" : "demo"}`}><span />{apiOnline ? "BACKEND ATIVO" : "MODO PRÉVIA"}</span></div>
       <div className="settings-grid">
-        <section className="panel form-panel"><div className="form-heading"><span><Settings size={21} /></span><div><h3>Dados principais</h3><p>Informações usadas no atendimento</p></div></div><label>Nome da empresa<input value={company} onChange={(e) => setCompany(e.target.value)} /></label><label>Link enviado após confirmar o Pix<input value={access} onChange={(e) => setAccess(e.target.value)} /></label><label>Contexto da IA<textarea rows={7} value={context} onChange={(e) => setContext(e.target.value)} /></label><button className="primary-action save-button" onClick={save}><Check size={17} />Salvar prévia</button></section>
-        <div className="settings-side"><article className="panel rule-card"><span><Bot size={22} /></span><div><h4>Atendimento da IA</h4><p>Responde mensagens e entende mídias usando apenas o contexto cadastrado.</p></div></article><article className="panel rule-card amber"><span><Clock3 size={22} /></span><div><h4>Pausa automática</h4><p>Ao detectar “já fiz o Pix” ou um comprovante, a IA encerra a atuação.</p></div></article><article className="panel rule-card green"><span><ShieldCheck size={22} /></span><div><h4>Liberação humana</h4><p>O atendente confere o banco, confirma no CRM e o acesso é enviado.</p></div></article><article className="settings-info"><b>Onde salvar de verdade?</b><p>No sistema online, nome, contexto e link ficam na tabela <code>companies</code> do Supabase. O guia do projeto mostra o comando pronto.</p></article></div>
+        <section className="panel form-panel"><div className="form-heading"><span><Settings size={21} /></span><div><h3>Dados principais</h3><p>Informações usadas no atendimento</p></div></div><label>Nome da empresa<input value={company} onChange={(e) => setCompany(e.target.value)} /></label><label>Link enviado após confirmar o Pix<input value={access} onChange={(e) => setAccess(e.target.value)} /></label><label>Contexto da IA<textarea rows={7} value={context} onChange={(e) => setContext(e.target.value)} /></label><button className="primary-action save-button" onClick={save} disabled={saving || !company.trim()}>{saving ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}{saving ? "Salvando..." : "Salvar configurações"}</button></section>
+        <div className="settings-side"><article className="panel rule-card"><span><Bot size={22} /></span><div><h4>Atendimento da IA</h4><p>Responde mensagens e entende mídias usando apenas o contexto cadastrado.</p></div></article><article className="panel rule-card amber"><span><Clock3 size={22} /></span><div><h4>Pausa automática</h4><p>Ao detectar “já fiz o Pix” ou um comprovante, a IA encerra a atuação.</p></div></article><article className="panel rule-card green"><span><ShieldCheck size={22} /></span><div><h4>Liberação humana</h4><p>O atendente confere o banco, confirma no CRM e o acesso é enviado.</p></div></article><article className="settings-info"><b>Salvamento permanente</b><p>Com o backend ativo, o botão salva nome, contexto e link diretamente no banco de dados do sistema.</p></article></div>
       </div>
     </div>
   );

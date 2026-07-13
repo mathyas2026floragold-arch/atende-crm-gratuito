@@ -19,6 +19,6 @@ def is_admin_authorized(authorization: str | None) -> bool:
         username, password = decoded.split(":", 1)
     except (ValueError, UnicodeDecodeError, binascii.Error):
         return False
-    return secrets.compare_digest(username, settings.crm_admin_user) and secrets.compare_digest(
+    return secrets.compare_digest(username.strip().casefold(), settings.crm_admin_user.strip().casefold()) and secrets.compare_digest(
         password, settings.crm_admin_password
     )
