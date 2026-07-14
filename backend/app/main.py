@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from .auth import is_admin_authorized
+from .auth import is_admin_authorized, is_admin_session
 from .config import get_settings
 from .database import connect_db, disconnect_db
 from .routers import api, webhooks
@@ -32,13 +32,23 @@ app.add_middleware(
 async def protect_combined_crm(request: Request, call_next):
     """Protege painel e API quando o frontend e backend rodam juntos."""
     path = request.url.path
-    public_path = path == "/health" or path.startswith("/webhooks/")
+    public_path = (
+        path == "/health"
+        or path.startswith("/webhooks/")
+        or path == "/api/auth/login"
+        or not path.startswith("/api/")
+    )
     if settings.crm_admin_password and not public_path:
-        if not is_admin_authorized(request.headers.get("authorization")):
+        authorized = is_admin_authorized(request.headers.get("authorization"))
+        if not authorized and is_admin_session(request.cookies.get("atende_session")):
+            headers = [(key, value) for key, value in request.scope["headers"] if key != b"authorization"]
+            headers.append((b"authorization", f"Bearer {settings.app_secret}".encode()))
+            request.scope["headers"] = headers
+            authorized = True
+        if not authorized:
             return JSONResponse(
                 {"detail": "Login necessário"},
                 status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="Atende CRM"'},
             )
     return await call_next(request)
 

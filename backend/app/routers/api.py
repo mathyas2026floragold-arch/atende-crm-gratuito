@@ -1,12 +1,40 @@
 from uuid import UUID
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel
-from ..auth import is_admin_authorized
+from ..auth import authenticate_admin_credentials, create_admin_session, is_admin_authorized
 from ..config import get_settings
 from ..database import db
 from ..services.evolution import EvolutionClient
 
 router = APIRouter(prefix="/api", tags=["crm"])
+
+
+class AdminLogin(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/auth/login")
+async def admin_login(body: AdminLogin, response: Response):
+    if not authenticate_admin_credentials(body.username, body.password):
+        raise HTTPException(401, "Usuário ou senha inválidos")
+    response.set_cookie(
+        "atende_session",
+        create_admin_session(),
+        max_age=86400,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+    return {"ok": True, "user": get_settings().crm_admin_user}
+
+
+@router.post("/auth/logout")
+async def admin_logout(response: Response, authorization: str | None = Header(default=None)):
+    verify_admin(authorization)
+    response.delete_cookie("atende_session", path="/")
+    return {"ok": True}
 
 
 def verify_admin(authorization: str | None) -> None:

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Bot,
@@ -150,11 +150,14 @@ async function crmApi<T>(path: string, options?: RequestInit): Promise<T> {
   const apiPrefix = import.meta.env.VITE_CRM_API_PREFIX || "/api/crm";
   const response = await fetch(`${apiPrefix}${path}`, {
     ...options,
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json", ...(options?.headers || {}) },
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `Erro ${response.status}`);
+    const error = new Error(body.detail || `Erro ${response.status}`) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }
@@ -186,6 +189,7 @@ export default function App() {
   const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({});
   const [apiOnline, setApiOnline] = useState(false);
   const [apiError, setApiError] = useState("");
+  const [loginRequired, setLoginRequired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
@@ -204,6 +208,7 @@ export default function App() {
         const items = await crmApi<Conversation[]>("/conversations");
         if (!active) return;
         setApiOnline(true);
+        setLoginRequired(false);
         setApiError("");
         setConversations(items);
         setSelectedId((current) => items.some((item) => item.id === current) ? current : (items[0]?.id || current));
@@ -211,6 +216,7 @@ export default function App() {
         if (active) {
           setApiOnline(false);
           setApiError(error instanceof Error ? error.message : "Backend indisponível");
+          if (error instanceof Error && (error as Error & { status?: number }).status === 401) setLoginRequired(true);
         }
       } finally {
         if (active) setLoading(false);
@@ -335,6 +341,8 @@ export default function App() {
     setMobileMenu(false);
   }
 
+  if (loginRequired) return <LoginView />;
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileMenu ? "is-open" : ""}`}>
@@ -418,6 +426,47 @@ export default function App() {
         {section === "settings" && <SettingsView apiOnline={apiOnline} showNotice={showNotice} />}
       </main>
     </div>
+  );
+}
+
+function LoginView() {
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function login(event: FormEvent) {
+    event.preventDefault();
+    if (!username.trim() || !password || loading) return;
+    setLoading(true);
+    setError("");
+    try {
+      await crmApi("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      });
+      window.location.reload();
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : "Não foi possível entrar.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="login-page">
+      <section className="login-card">
+        <div className="login-brand"><span><MessageCircle size={25} /></span><div><strong>Atende</strong><b>CRM</b></div></div>
+        <h1>Entrar no painel</h1>
+        <p>Use o acesso administrativo configurado no servidor.</p>
+        <form onSubmit={login}>
+          <label>Usuário<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} /></label>
+          <label>Senha<input autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus /></label>
+          {error && <div className="login-error">{error}</div>}
+          <button type="submit" disabled={loading || !username.trim() || !password}>{loading ? <LoaderCircle className="spin" size={18} /> : <ShieldCheck size={18} />}{loading ? "Entrando..." : "Entrar"}</button>
+        </form>
+      </section>
+    </main>
   );
 }
 

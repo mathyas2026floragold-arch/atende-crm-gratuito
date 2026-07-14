@@ -1,7 +1,7 @@
 import base64
 import os
 import unittest
-from app.auth import is_admin_authorized
+from app.auth import create_admin_session, is_admin_authorized, is_admin_session
 from app.config import get_settings
 
 
@@ -35,6 +35,12 @@ class AdminAuthorizationTests(unittest.TestCase):
     def test_rejects_wrong_basic_password(self):
         encoded = base64.b64encode(b"admin:senha-errada").decode()
         self.assertFalse(is_admin_authorized(f"Basic {encoded}"))
+
+    def test_creates_valid_browser_session(self):
+        self.assertTrue(is_admin_session(create_admin_session()))
+
+    def test_rejects_invalid_browser_session(self):
+        self.assertFalse(is_admin_session("token-invalido"))
 
 
 if __name__ == "__main__":
