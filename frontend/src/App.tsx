@@ -13,7 +13,6 @@ import {
   Menu,
   MessageCircle,
   MoreHorizontal,
-  Paperclip,
   Play,
   QrCode,
   RefreshCw,
@@ -182,10 +181,11 @@ function phone(value: string) {
 export default function App() {
   const [section, setSection] = useState("dashboard");
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [conversations, setConversations] = useState<Conversation[]>(DEMO_CONVERSATIONS);
-  const [selectedId, setSelectedId] = useState(DEMO_CONVERSATIONS[0].id);
-  const [messages, setMessages] = useState<Record<string, ChatMessage[]>>(DEMO_MESSAGES);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({});
   const [apiOnline, setApiOnline] = useState(false);
+  const [apiError, setApiError] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
@@ -204,10 +204,14 @@ export default function App() {
         const items = await crmApi<Conversation[]>("/conversations");
         if (!active) return;
         setApiOnline(true);
+        setApiError("");
         setConversations(items);
         setSelectedId((current) => items.some((item) => item.id === current) ? current : (items[0]?.id || current));
-      } catch {
-        if (active) setApiOnline(false);
+      } catch (error) {
+        if (active) {
+          setApiOnline(false);
+          setApiError(error instanceof Error ? error.message : "Backend indisponível");
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -267,22 +271,21 @@ export default function App() {
 
   async function sendMessage() {
     if (!selected || !draft.trim() || sending) return;
+    if (!apiOnline) {
+      showNotice("Sistema desconectado. A mensagem não foi enviada.");
+      return;
+    }
     const content = draft.trim();
     setSending(true);
     try {
-      let sent: ChatMessage;
-      if (apiOnline) {
-        sent = await crmApi<ChatMessage>(`/conversations/${selected.id}/messages`, {
-          method: "POST",
-          body: JSON.stringify({ content }),
-        });
-      } else {
-        sent = { id: `demo-${Date.now()}`, direction: "out", content, created_at: new Date().toISOString(), actor: "human", status: "sent" };
-      }
+      const sent = await crmApi<ChatMessage>(`/conversations/${selected.id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      });
       setMessages((old) => ({ ...old, [selected.id]: [...(old[selected.id] || []), sent] }));
       updateConversation(selected.id, { ai_mode: "human_exclusive", status: selected.status === "new" ? "in_progress" : selected.status, last_message: content, updated_at: sent.created_at });
       setDraft("");
-      showNotice(apiOnline ? "Mensagem enviada pelo WhatsApp." : "Mensagem simulada na prévia.");
+      showNotice("Mensagem enviada pelo WhatsApp.");
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Não foi possível enviar.");
     } finally {
@@ -292,19 +295,19 @@ export default function App() {
 
   async function confirmPayment() {
     if (!selected || selected.status !== "awaiting_payment_confirmation") return;
+    if (!apiOnline) {
+      showNotice("Sistema desconectado. O pagamento não foi confirmado.");
+      return;
+    }
     if (!window.confirm("Você já conferiu o Pix no banco e quer enviar o acesso agora?")) return;
     setSending(true);
     try {
-      if (apiOnline) {
-        await crmApi(`/conversations/${selected.id}/confirm-payment`, { method: "POST", body: "{}" });
-      }
-      const content = apiOnline
-        ? "Acesso enviado após a confirmação do pagamento."
-        : "Pagamento confirmado! Aqui está o seu acesso: https://exemplo.com/acesso";
+      await crmApi(`/conversations/${selected.id}/confirm-payment`, { method: "POST", body: "{}" });
+      const content = "Acesso enviado após a confirmação do pagamento.";
       const sent: ChatMessage = { id: `access-${Date.now()}`, direction: "out", content, created_at: new Date().toISOString(), actor: "human", status: "sent" };
       setMessages((old) => ({ ...old, [selected.id]: [...(old[selected.id] || []), sent] }));
       updateConversation(selected.id, { status: "resolved", ai_mode: "human_exclusive", last_message: content, updated_at: sent.created_at });
-      showNotice(apiOnline ? "Pix confirmado e acesso enviado." : "Confirmação simulada com sucesso.");
+      showNotice("Pix confirmado e acesso enviado.");
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Não foi possível confirmar.");
     } finally {
@@ -314,10 +317,14 @@ export default function App() {
 
   async function resumeAi() {
     if (!selected) return;
+    if (!apiOnline) {
+      showNotice("Sistema desconectado. Não foi possível retomar a IA.");
+      return;
+    }
     try {
-      if (apiOnline) await crmApi(`/conversations/${selected.id}/resume-ai`, { method: "POST", body: "{}" });
+      await crmApi(`/conversations/${selected.id}/resume-ai`, { method: "POST", body: "{}" });
       updateConversation(selected.id, { ai_mode: "autonomous", status: "in_progress", handoff_reason: null });
-      showNotice(apiOnline ? "IA retomada nesta conversa." : "IA retomada na simulação.");
+      showNotice("IA retomada nesta conversa.");
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Não foi possível retomar a IA.");
     }
@@ -336,11 +343,11 @@ export default function App() {
           <div><strong>Atende</strong><span>CRM</span></div>
           <button className="mobile-close" onClick={() => setMobileMenu(false)} aria-label="Fechar menu"><X size={20} /></button>
         </div>
-        <button className="company-switch">
+        <div className="company-switch">
           <span className="company-avatar">ME</span>
           <span><b>Minha empresa</b><small>Espaço principal</small></span>
           <ChevronDown size={16} />
-        </button>
+        </div>
         <nav>
           <p className="nav-label">NAVEGAÇÃO</p>
           {navItems.map(({ id, label, icon: Icon }) => (
@@ -354,7 +361,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <div className={`system-state ${apiOnline ? "online" : "demo"}`}>
             <span className="pulse" />
-            <div><b>{apiOnline ? "Sistema conectado" : "Modo demonstração"}</b><small>{apiOnline ? "Dados em tempo real" : "Configure o backend"}</small></div>
+            <div><b>{apiOnline ? "Sistema conectado" : "Sistema desconectado"}</b><small>{apiOnline ? "Dados em tempo real" : apiError || "Verifique o servidor"}</small></div>
           </div>
           <div className="profile">
             <span className="profile-avatar">MI</span>
@@ -374,8 +381,7 @@ export default function App() {
             <p>{section === "dashboard" ? "Acompanhe seu atendimento em tempo real" : section === "connection" ? "Conecte e monitore seu número" : "Gerencie sua operação em um só lugar"}</p>
           </div>
           <div className="topbar-actions">
-            <span className={`mode-pill ${apiOnline ? "real" : "demo"}`}><span />{apiOnline ? "AO VIVO" : "PRÉVIA"}</span>
-            <button className="icon-button"><Search size={18} /></button>
+            <span className={`mode-pill ${apiOnline ? "real" : "demo"}`}><span />{apiOnline ? "AO VIVO" : "OFFLINE"}</span>
             <span className="top-avatar">MI</span>
           </div>
         </header>
@@ -540,7 +546,6 @@ function InboxView(props: InboxProps) {
             ))}
           </div>
           <div className="composer">
-            <button className="icon-button"><Paperclip size={19} /></button>
             <textarea value={props.draft} onChange={(e) => props.onDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); props.onSend(); } }} placeholder="Digite uma mensagem como atendente humano..." rows={1} />
             <button className="send-button" onClick={props.onSend} disabled={!props.draft.trim() || props.sending}>{props.sending ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button>
           </div>
@@ -584,19 +589,18 @@ function ConnectionView({ apiOnline, showNotice }: { apiOnline: boolean; showNot
   async function refresh() {
     setLoading(true);
     try {
-      if (apiOnline) {
-        const state = await crmApi<Record<string, unknown>>("/connections/state");
-        const serialized = JSON.stringify(state).toLowerCase();
-        setConnected(serialized.includes("open") || serialized.includes("connected"));
-        if (!serialized.includes("open") && !serialized.includes("connected")) {
-          const response = await crmApi<Record<string, unknown>>("/connections/qr");
-          const raw = String(response.base64 || response.qrcode || response.code || "");
-          if (raw) setQr(raw.startsWith("data:") ? raw : `data:image/png;base64,${raw}`);
-        }
-      } else {
+      if (!apiOnline) {
         setConnected(false);
         setQr("");
-        showNotice("QR atualizado no modo demonstração.");
+        return;
+      }
+      const state = await crmApi<Record<string, unknown>>("/connections/state");
+      const serialized = JSON.stringify(state).toLowerCase();
+      setConnected(serialized.includes("open") || serialized.includes("connected"));
+      if (!serialized.includes("open") && !serialized.includes("connected")) {
+        const response = await crmApi<Record<string, unknown>>("/connections/qr");
+        const raw = String(response.base64 || response.qrcode || response.code || "");
+        setQr(raw ? (raw.startsWith("data:") ? raw : `data:image/png;base64,${raw}`) : "");
       }
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Não foi possível consultar a conexão.");
@@ -609,7 +613,7 @@ function ConnectionView({ apiOnline, showNotice }: { apiOnline: boolean; showNot
     setLoading(true);
     try {
       if (!apiOnline) {
-        showNotice("A preparação real ficará disponível quando o backend estiver conectado.");
+        showNotice("Sistema desconectado. Não foi possível preparar o WhatsApp.");
         return;
       }
       await crmApi("/connections/setup", { method: "POST", body: "{}" });
@@ -631,9 +635,8 @@ function ConnectionView({ apiOnline, showNotice }: { apiOnline: boolean; showNot
         <article className="panel qr-panel">
           <div className="qr-heading"><span><QrCode size={21} /></span><div><h3>QR Code da instância</h3><p>Atualização segura pela Evolution API</p></div></div>
           <div className="qr-frame">
-            {connected ? <div className="connected-visual"><CheckCheck size={50} /><b>Número conectado</b><small>Pronto para receber mensagens</small></div> : qr ? <img src={qr} alt="QR Code do WhatsApp" /> : <DemoQr />}
+            {connected ? <div className="connected-visual"><CheckCheck size={50} /><b>Número conectado</b><small>Pronto para receber mensagens</small></div> : qr ? <img src={qr} alt="QR Code do WhatsApp" /> : <div className="connected-visual"><Wifi size={42} /><b>QR Code indisponível</b><small>{apiOnline ? "Clique em preparar conexão" : "Backend desconectado"}</small></div>}
           </div>
-          {!apiOnline && <span className="demo-label">QR DE DEMONSTRAÇÃO — NÃO ESCANEÁVEL</span>}
           <div className="qr-actions">
             <button className="prepare-button" onClick={prepare} disabled={loading}><Zap size={17} />Preparar conexão</button>
             <button className="refresh-button" onClick={refresh} disabled={loading}>{loading ? <LoaderCircle className="spin" size={17} /> : <RefreshCw size={17} />}Atualizar QR Code</button>
@@ -674,16 +677,12 @@ function SettingsView({ apiOnline, showNotice }: { apiOnline: boolean; showNotic
     if (!company.trim() || saving) return;
     setSaving(true);
     try {
-      if (apiOnline) {
-        await crmApi("/settings", {
-          method: "PUT",
-          body: JSON.stringify({ name: company, access_url: access, ai_context: context }),
-        });
-        showNotice("Configurações salvas no sistema.");
-      } else {
-        localStorage.setItem("atende-settings", JSON.stringify({ company, access, context }));
-        showNotice("Configuração salva somente neste navegador.");
-      }
+      if (!apiOnline) throw new Error("Sistema desconectado. Nada foi salvo.");
+      await crmApi("/settings", {
+        method: "PUT",
+        body: JSON.stringify({ name: company, access_url: access, ai_context: context }),
+      });
+      showNotice("Configurações salvas no sistema.");
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Não foi possível salvar as configurações.");
     } finally {
@@ -692,9 +691,9 @@ function SettingsView({ apiOnline, showNotice }: { apiOnline: boolean; showNotic
   }
   return (
     <div className="page narrow-page settings-page">
-      <div className="section-title"><div><h2>Configurações da empresa</h2><p>Personalize o sistema para qualquer tipo de negócio.</p></div><span className={`mode-pill ${apiOnline ? "real" : "demo"}`}><span />{apiOnline ? "BACKEND ATIVO" : "MODO PRÉVIA"}</span></div>
+      <div className="section-title"><div><h2>Configurações da empresa</h2><p>Personalize o sistema para qualquer tipo de negócio.</p></div><span className={`mode-pill ${apiOnline ? "real" : "demo"}`}><span />{apiOnline ? "BACKEND ATIVO" : "BACKEND OFFLINE"}</span></div>
       <div className="settings-grid">
-        <section className="panel form-panel"><div className="form-heading"><span><Settings size={21} /></span><div><h3>Dados principais</h3><p>Informações usadas no atendimento</p></div></div><label>Nome da empresa<input value={company} onChange={(e) => setCompany(e.target.value)} /></label><label>Link enviado após confirmar o Pix<input value={access} onChange={(e) => setAccess(e.target.value)} /></label><label>Contexto da IA<textarea rows={7} value={context} onChange={(e) => setContext(e.target.value)} /></label><button className="primary-action save-button" onClick={save} disabled={saving || !company.trim()}>{saving ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}{saving ? "Salvando..." : "Salvar configurações"}</button></section>
+        <section className="panel form-panel"><div className="form-heading"><span><Settings size={21} /></span><div><h3>Dados principais</h3><p>Informações usadas no atendimento</p></div></div><label>Nome da empresa<input value={company} onChange={(e) => setCompany(e.target.value)} disabled={!apiOnline} /></label><label>Link enviado após confirmar o Pix<input value={access} onChange={(e) => setAccess(e.target.value)} disabled={!apiOnline} /></label><label>Contexto da IA<textarea rows={7} value={context} onChange={(e) => setContext(e.target.value)} disabled={!apiOnline} /></label><button className="primary-action save-button" onClick={save} disabled={saving || !company.trim() || !apiOnline}>{saving ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}{saving ? "Salvando..." : "Salvar configurações"}</button></section>
         <div className="settings-side"><article className="panel rule-card"><span><Bot size={22} /></span><div><h4>Atendimento da IA</h4><p>Responde mensagens e entende mídias usando apenas o contexto cadastrado.</p></div></article><article className="panel rule-card amber"><span><Clock3 size={22} /></span><div><h4>Pausa automática</h4><p>Ao detectar “já fiz o Pix” ou um comprovante, a IA encerra a atuação.</p></div></article><article className="panel rule-card green"><span><ShieldCheck size={22} /></span><div><h4>Liberação humana</h4><p>O atendente confere o banco, confirma no CRM e o acesso é enviado.</p></div></article><article className="settings-info"><b>Salvamento permanente</b><p>Com o backend ativo, o botão salva nome, contexto e link diretamente no banco de dados do sistema.</p></article></div>
       </div>
     </div>
