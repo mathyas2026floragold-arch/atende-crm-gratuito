@@ -505,17 +505,23 @@ function CheckCircle() {
 
 function Dashboard({ stats, conversations, onOpen }: { stats: Record<string, number>; conversations: Conversation[]; onOpen: (id: string) => void }) {
   const cards = [
-    { label: "Atendimentos", value: stats.total, hint: "conversas recentes", icon: MessageCircle, tone: "purple" },
-    { label: "IA atendendo", value: stats.ai, hint: "respostas automáticas", icon: Bot, tone: "blue" },
-    { label: "Aguardando Pix", value: stats.pix, hint: "precisam de você", icon: Clock3, tone: "amber" },
-    { label: "Concluídos", value: stats.resolved, hint: "acessos enviados", icon: CheckCheck, tone: "green" },
+    { label: "Conversas abertas", value: conversations.filter((c) => !["resolved", "cancelled"].includes(c.status)).length, hint: "operação real", icon: MessageCircle, tone: "purple" },
+    { label: "Conferir Pix", value: stats.pix, hint: "entrada humana", icon: Clock3, tone: "amber" },
+    { label: "IA atendendo", value: stats.ai, hint: "automáticas", icon: Bot, tone: "blue" },
+    { label: "Atendimento humano", value: conversations.filter((c) => c.ai_mode === "human_exclusive").length, hint: "em andamento", icon: Users, tone: "green" },
+  ];
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - (6 - index));
+    const end = new Date(date); end.setDate(end.getDate() + 1);
+    return { label: new Intl.DateTimeFormat("pt-BR", { weekday: "short" }).format(date).replace(".", ""), value: conversations.filter((c) => { const updated = new Date(c.updated_at); return updated >= date && updated < end; }).length };
+  });
+  const maxDay = Math.max(1, ...days.map((day) => day.value));
+  const funnel = [
+    ["Novos", conversations.filter((c) => c.status === "new").length], ["Em atendimento", conversations.filter((c) => c.status === "in_progress").length],
+    ["Pagamento", stats.pix], ["Finalizados", stats.resolved],
   ];
   return (
     <div className="page dashboard-page">
-      <section className="welcome-card">
-        <div><span className="eyebrow"><Sparkles size={14} /> OPERAÇÃO INTELIGENTE</span><h2>Seu atendimento, sob controle.</h2><p>A IA conversa com os clientes. Você entra apenas quando o Pix precisa ser conferido.</p></div>
-        <div className="welcome-visual"><span><Bot size={30} /></span><i /><span><ShieldCheck size={30} /></span></div>
-      </section>
       <section className="stat-grid">
         {cards.map(({ label, value, hint, icon: Icon, tone }) => (
           <article className="stat-card" key={label}>
@@ -524,9 +530,10 @@ function Dashboard({ stats, conversations, onOpen }: { stats: Record<string, num
           </article>
         ))}
       </section>
-      <section className="dashboard-grid">
+      <section className="dashboard-reference-grid">
+        <article className="panel volume-panel"><div className="panel-heading"><div><h3>Volume de atendimentos</h3><p>Últimos 7 dias</p></div></div><div className="volume-bars">{days.map((day) => <div key={day.label}><span style={{ height: `${Math.max(8, day.value / maxDay * 100)}%` }} title={`${day.value} atendimento(s)`} /><small>{day.label}</small></div>)}</div></article>
         <article className="panel recent-panel">
-          <div className="panel-heading"><div><h3>Atendimentos recentes</h3><p>Fila atual do WhatsApp</p></div><button onClick={() => conversations[0] && onOpen(conversations[0].id)}>Ver todos</button></div>
+          <div className="panel-heading"><div><h3>Fila atual</h3><p>Prioridade e etapa</p></div><button onClick={() => conversations[0] && onOpen(conversations[0].id)}>Ver todas</button></div>
           <div className="recent-list">
             {conversations.slice(0, 5).map((item) => (
               <button key={item.id} onClick={() => onOpen(item.id)}>
@@ -538,16 +545,8 @@ function Dashboard({ stats, conversations, onOpen }: { stats: Record<string, num
             ))}
           </div>
         </article>
-        <article className="panel flow-panel">
-          <div className="panel-heading"><div><h3>Fluxo do atendimento</h3><p>Automação com segurança</p></div><Zap size={20} /></div>
-          <div className="flow-step"><span className="blue"><MessageCircle size={18} /></span><div><b>Cliente chama</b><small>Mensagem chega pelo WhatsApp</small></div></div>
-          <div className="flow-line" />
-          <div className="flow-step"><span className="purple"><Bot size={18} /></span><div><b>IA atende</b><small>Texto, imagem, áudio e vídeo</small></div></div>
-          <div className="flow-line" />
-          <div className="flow-step"><span className="amber"><CircleDollarSign size={18} /></span><div><b>Cliente informa o Pix</b><small>A conversa é pausada</small></div></div>
-          <div className="flow-line" />
-          <div className="flow-step"><span className="green"><ShieldCheck size={18} /></span><div><b>Humano confirma</b><small>O acesso é enviado</small></div></div>
-        </article>
+        <article className="panel owners-panel"><div className="panel-heading"><div><h3>Responsáveis</h3><p>Distribuição atual</p></div></div><div className="owner-item"><span><Bot size={17} /></span><div><b>IA</b><small>conversas</small></div><strong>{stats.ai}</strong></div><div className="owner-item"><span><Users size={17} /></span><div><b>Humano</b><small>conversas</small></div><strong>{conversations.filter((c) => c.ai_mode !== "autonomous").length}</strong></div><div className="owner-item"><span><CircleDollarSign size={17} /></span><div><b>Aguardando Pix</b><small>conversas</small></div><strong>{stats.pix}</strong></div></article>
+        <article className="panel funnel-summary"><div className="panel-heading"><div><h3>Funil resumido</h3><p>Oportunidades ativas</p></div></div>{funnel.map(([label, value]) => <div className="funnel-summary-row" key={label}><span>{label}</span><strong>{value}</strong></div>)}</article>
       </section>
     </div>
   );
