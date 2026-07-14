@@ -69,6 +69,20 @@ async def history(conversation_id: UUID):
     )
 
 
+async def unanswered_customer_text(conversation_id: UUID) -> str:
+    rows = await db().fetch(
+        """SELECT content FROM messages WHERE conversation_id=$1 AND direction='in'
+        AND created_at > COALESCE(
+          (SELECT max(created_at) FROM messages WHERE conversation_id=$1 AND direction='out'),
+          '1970-01-01'::timestamptz
+        ) ORDER BY created_at""",
+        conversation_id,
+    )
+    return "\n".join(
+        str(row["content"]).strip() for row in rows if str(row["content"] or "").strip()
+    )
+
+
 async def pause_for_payment(conversation_id: UUID, reason: str):
     await db().execute(
         """UPDATE conversations SET status='awaiting_payment_confirmation',ai_mode='paused',handoff_reason=$2,updated_at=now()

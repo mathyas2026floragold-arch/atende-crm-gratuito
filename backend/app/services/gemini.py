@@ -2,10 +2,23 @@ import httpx
 from ..config import get_settings
 
 
-SYSTEM_PROMPT = """Você integra a equipe de atendimento da empresa.
-Converse em português brasileiro natural, com mensagens curtas e uma pergunta por vez.
-Use apenas produtos, preços, políticas e respostas fornecidas no contexto da empresa.
-Nunca diga que é uma IA. Nunca invente informação.
+SYSTEM_PROMPT = """Você é a atendente comercial da Tunar Games no WhatsApp.
+Seu objetivo é entender a necessidade, explicar o serviço, tirar dúvidas e conduzir o cliente ao próximo passo.
+
+INFORMAÇÕES OBRIGATÓRIAS SOBRE O DESBLOQUEIO:
+- O desbloqueio é remoto: o cliente não precisa de pendrive.
+- O cliente adquire um acesso para realizar o procedimento orientado.
+- O acesso é vitalício e inclui suporte.
+- Nunca invente preço, prazo, compatibilidade, requisito ou pagamento que não esteja no contexto da empresa.
+
+REGRAS DE CONVERSA:
+- Responda em português brasileiro natural, com 2 a 5 frases curtas e no máximo uma pergunta.
+- Responda diretamente ao que foi perguntado antes de fazer outra pergunta.
+- Não repita “olá” se a conversa já começou e não repita informações já explicadas.
+- Não ofereça “planos” genéricos. Fale do desbloqueio e apenas das opções existentes no contexto.
+- Se perguntarem como funciona, explique imediatamente: remoto, sem pendrive, acesso vitalício e suporte.
+- Se faltar preço ou compatibilidade, diga exatamente o que precisa confirmar com a equipe.
+- Nunca diga que é uma IA. Nunca invente informação.
 Não confirme pagamentos e não libere acessos.
 Quando o cliente disser que pagou ou enviar comprovante, informe que a equipe fará a conferência e encerre sua atuação nessa conversa.
 Se não tiver certeza, diga que vai verificar com a equipe.
@@ -51,6 +64,13 @@ class GeminiClient:
             raise GeminiServiceError("O Gemini não retornou uma resposta em texto.")
         return answer
 
+    def _limit_reply(self, answer: str) -> str:
+        limit = max(200, self.settings.ai_max_reply_chars)
+        if len(answer) <= limit:
+            return answer
+        shortened = answer[:limit].rsplit(" ", 1)[0].rstrip(" ,;:")
+        return shortened + "…"
+
     async def _interaction(self, text: str, media_base64: str | None = None, mime_type: str | None = None) -> str:
         model = self.settings.gemini_model
         # Alias da API legada; a API Interactions usa o identificador estável atual.
@@ -72,14 +92,14 @@ class GeminiClient:
             "store": False,
             "generation_config": {"temperature": 0.45, "max_output_tokens": 220},
         }
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=self.settings.ai_request_timeout_seconds) as client:
             response = await client.post(
                 "https://generativelanguage.googleapis.com/v1beta/interactions",
                 headers={"x-goog-api-key": self.settings.gemini_api_key}, json=payload,
             )
             if not response.is_success:
                 raise _safe_gemini_error(response)
-            return self._output_text(response.json())
+            return self._limit_reply(self._output_text(response.json()))
 
     async def answer(self, message: str, history: list[dict], company_context: str, media_base64: str | None = None, mime_type: str | None = None) -> str:
         if not self.settings.gemini_api_key:
@@ -88,7 +108,12 @@ class GeminiClient:
             f"{'Cliente' if item.get('direction') == 'in' else 'Empresa'}: {item.get('content', '')}"
             for item in history[-12:]
         )
-        prompt = f"CONTEXTO DA EMPRESA:\n{company_context}\n\nHISTÓRICO:\n{history_text}\n\nCLIENTE: {message}"
+        prompt = (
+            f"CONTEXTO DA EMPRESA:\n{company_context}\n\n"
+            f"HISTÓRICO EM ORDEM CRONOLÓGICA:\n{history_text}\n\n"
+            f"MENSAGENS NOVAS AGRUPADAS:\n{message}\n\n"
+            "Responda uma única vez, sem repetir saudação ou conteúdo anterior."
+        )
         return await self._interaction(prompt, media_base64, mime_type)
 
     async def is_payment_proof(self, media_base64: str | None, mime_type: str | None) -> bool:

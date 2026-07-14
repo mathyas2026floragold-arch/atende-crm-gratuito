@@ -179,7 +179,7 @@ Essa URI será colocada em `DATABASE_CONNECTION_URI` no serviço da Evolution.
 5. Em imagem externa, coloque:
 
 ```text
-atendai/evolution-api:v2.1.1
+evoapicloud/evolution-api:v2.3.7
 ```
 
 6. Clique em verificar a imagem.
@@ -305,9 +305,11 @@ Abra as variáveis de execução do serviço `atende-crm` e preencha:
 | `EVOLUTION_INSTANCE` | `empresa-principal` |
 | `EVOLUTION_WEBHOOK_TOKEN` | outro token aleatório longo |
 | `GEMINI_API_KEY` | chave do Google AI Studio |
-| `GEMINI_MODEL` | `gemini-3.5-flash` |
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite` |
 | `AI_ENABLED` | `true` |
-| `AI_DEBOUNCE_SECONDS` | `8` |
+| `AI_DEBOUNCE_SECONDS` | `3` |
+| `AI_REQUEST_TIMEOUT_SECONDS` | `25` |
+| `AI_MAX_REPLY_CHARS` | `650` |
 | `DEFAULT_COMPANY_SLUG` | `minha-empresa` |
 | `DEFAULT_COMPANY_NAME` | nome da empresa |
 | `DEFAULT_ACCESS_MESSAGE` | `Pagamento confirmado! Aqui está o seu acesso: {access_url}` |
