@@ -62,6 +62,13 @@ class WebhookParsingTests(unittest.TestCase):
         self.assertEqual(event["phone"], "5584999999999")
         self.assertEqual(event["lid"], "41854926090386")
 
+    def test_keeps_incoming_image_for_crm_and_gemini(self):
+        payload = {"event":"messages.upsert","instance":"empresa-principal","data":{"key":{"fromMe":False,"remoteJid":"5584999999999@s.whatsapp.net","id":"IMG1"},"message":{"imageMessage":{"caption":"Veja a imagem","mimetype":"image/jpeg"}},"base64":"YWJj"}}
+        event = extract_event(payload)
+        self.assertEqual(event["media_type"], "image")
+        self.assertEqual(event["mime_type"], "image/jpeg")
+        self.assertEqual(event["media_url"], "data:image/jpeg;base64,YWJj")
+
 
 if __name__ == "__main__":
     unittest.main()

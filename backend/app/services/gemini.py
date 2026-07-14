@@ -27,7 +27,7 @@ class GeminiClient:
 
     async def answer(self, message: str, history: list[dict], company_context: str, media_base64: str | None = None, mime_type: str | None = None) -> str:
         if not self.settings.gemini_api_key:
-            return self.demo_answer(message)
+            raise RuntimeError("GEMINI_API_KEY não configurada")
         history_text = "\n".join(
             f"{'Cliente' if item.get('direction') == 'in' else 'Empresa'}: {item.get('content', '')}"
             for item in history[-12:]

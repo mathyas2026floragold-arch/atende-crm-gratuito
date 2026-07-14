@@ -20,8 +20,10 @@ CREATE TABLE users (
   email text NOT NULL,
   name text NOT NULL,
   role text NOT NULL CHECK(role IN ('admin','supervisor','agent','finance','marketing')),
+  password_hash text,
   active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(company_id,email)
 );
 
@@ -69,6 +71,9 @@ CREATE TABLE messages (
   content text NOT NULL DEFAULT '',
   media_type text,
   media_url text,
+  file_name text,
+  mime_type text,
+  actor text,
   status text NOT NULL DEFAULT 'received',
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -103,7 +108,7 @@ CREATE INDEX idx_payments_company_status ON payments(company_id,status);
 CREATE VIEW conversation_inbox AS
 SELECT c.id,c.company_id,c.status,c.ai_mode,c.handoff_reason,c.updated_at,
        ct.name AS contact_name,ct.phone,w.instance_name,u.name AS assigned_user,
-       (SELECT content FROM messages m WHERE m.conversation_id=c.id ORDER BY created_at DESC LIMIT 1) AS last_message
+       (SELECT COALESCE(NULLIF(m.content,''),m.file_name,m.media_type,'Mídia recebida') FROM messages m WHERE m.conversation_id=c.id ORDER BY created_at DESC LIMIT 1) AS last_message
 FROM conversations c
 JOIN contacts ct ON ct.id=c.contact_id
 JOIN whatsapp_connections w ON w.id=c.channel_id

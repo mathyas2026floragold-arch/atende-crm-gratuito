@@ -1,4 +1,4 @@
-import { type ComponentType, type FormEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type ComponentType, type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Bot,
@@ -17,6 +17,7 @@ import {
   Menu,
   MessageCircle,
   MoreHorizontal,
+  Paperclip,
   Play,
   PlugZap,
   QrCode,
@@ -54,79 +55,15 @@ type ChatMessage = {
   direction: "in" | "out";
   content: string;
   media_type?: string | null;
+  media_url?: string | null;
+  mime_type?: string | null;
+  file_name?: string | null;
   status?: string;
   created_at: string;
   actor?: "ai" | "human";
 };
 
-const now = Date.now();
-const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
-
-const DEMO_CONVERSATIONS: Conversation[] = [
-  {
-    id: "demo-ana",
-    contact_name: "Ana Souza",
-    phone: "5584998761234",
-    status: "awaiting_payment_confirmation",
-    ai_mode: "paused",
-    handoff_reason: "payment_proof_media",
-    last_message: "Pronto, já fiz o Pix. Segue o comprovante.",
-    updated_at: ago(2),
-    unread: 1,
-  },
-  {
-    id: "demo-joao",
-    contact_name: "João Santos",
-    phone: "5584987654321",
-    status: "in_progress",
-    ai_mode: "autonomous",
-    last_message: "Quero entender como funciona o acesso",
-    updated_at: ago(7),
-  },
-  {
-    id: "demo-marina",
-    contact_name: "Marina Costa",
-    phone: "5584992443188",
-    status: "new",
-    ai_mode: "autonomous",
-    last_message: "Qual é o valor e como faço o Pix?",
-    updated_at: ago(14),
-    unread: 2,
-  },
-  {
-    id: "demo-carlos",
-    contact_name: "Carlos Lima",
-    phone: "5584991129900",
-    status: "resolved",
-    ai_mode: "human_exclusive",
-    last_message: "Acesso recebido. Obrigado!",
-    updated_at: ago(52),
-  },
-];
-
-const DEMO_MESSAGES: Record<string, ChatMessage[]> = {
-  "demo-ana": [
-    { id: "a1", direction: "in", content: "Oi, vi a oferta e quero saber como funciona.", created_at: ago(18) },
-    { id: "a2", direction: "out", content: "Oi, Ana! Claro. O acesso é liberado após a confirmação do pagamento. O que você quer saber primeiro?", created_at: ago(17), actor: "ai", status: "read" },
-    { id: "a3", direction: "in", content: "Pode me mandar a chave Pix?", created_at: ago(8) },
-    { id: "a4", direction: "out", content: "Posso sim. Depois de pagar, mande o comprovante aqui para a equipe conferir.", created_at: ago(7), actor: "ai", status: "read" },
-    { id: "a5", direction: "in", content: "Pronto, já fiz o Pix. Segue o comprovante.", media_type: "image", created_at: ago(2) },
-    { id: "a6", direction: "out", content: "Recebi. Vou encaminhar agora para a equipe conferir o Pix e liberar seu acesso.", created_at: ago(2), actor: "ai", status: "delivered" },
-  ],
-  "demo-joao": [
-    { id: "j1", direction: "in", content: "Boa tarde! Quero entender como funciona o acesso.", created_at: ago(8) },
-    { id: "j2", direction: "out", content: "Boa tarde, João! Me diz qual opção chamou sua atenção que eu te explico direitinho.", created_at: ago(7), actor: "ai", status: "read" },
-  ],
-  "demo-marina": [
-    { id: "m1", direction: "in", content: "Oi", created_at: ago(16) },
-    { id: "m2", direction: "out", content: "Oi, Marina! Como posso te ajudar hoje?", created_at: ago(15), actor: "ai", status: "read" },
-    { id: "m3", direction: "in", content: "Qual é o valor e como faço o Pix?", created_at: ago(14) },
-  ],
-  "demo-carlos": [
-    { id: "c1", direction: "out", content: "Pagamento confirmado! Aqui está o seu acesso: https://exemplo.com/acesso", created_at: ago(58), actor: "human", status: "read" },
-    { id: "c2", direction: "in", content: "Acesso recebido. Obrigado!", created_at: ago(52) },
-  ],
-};
+type CrmUser = { id: string; name: string; email: string; role: string; active: boolean; created_at: string };
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
@@ -184,6 +121,16 @@ async function crmApi<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json();
 }
 
+async function crmUpload<T>(path: string, form: FormData): Promise<T> {
+  const apiPrefix = import.meta.env.VITE_CRM_API_PREFIX || "/api/crm";
+  const response = await fetch(`${apiPrefix}${path}`, { method: "POST", credentials: "same-origin", body: form });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || `Erro ${response.status}`);
+  }
+  return response.json();
+}
+
 function initials(name?: string | null) {
   return (name || "Cliente")
     .split(" ")
@@ -219,6 +166,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "pix" | "ai" | "resolved">("all");
   const [mobileChat, setMobileChat] = useState(false);
+  const [profileMenu, setProfileMenu] = useState(false);
 
   const selected = conversations.find((item) => item.id === selectedId) || conversations[0];
   const currentMessages = selected ? messages[selected.id] || [] : [];
@@ -321,6 +269,26 @@ export default function App() {
     }
   }
 
+  async function sendMedia(file: File) {
+    if (!selected || sending) return;
+    if (!apiOnline) { showNotice("Sistema desconectado. O arquivo não foi enviado."); return; }
+    const form = new FormData();
+    form.append("file", file);
+    form.append("caption", draft.trim());
+    setSending(true);
+    try {
+      const sent = await crmUpload<ChatMessage>(`/conversations/${selected.id}/media`, form);
+      setMessages((old) => ({ ...old, [selected.id]: [...(old[selected.id] || []), sent] }));
+      updateConversation(selected.id, { ai_mode: "human_exclusive", last_message: draft.trim() || file.name, updated_at: sent.created_at });
+      setDraft("");
+      showNotice("Arquivo enviado pelo WhatsApp.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Não foi possível enviar o arquivo.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function confirmPayment() {
     if (!selected || selected.status !== "awaiting_payment_confirmation") return;
     if (!apiOnline) {
@@ -363,6 +331,11 @@ export default function App() {
     setMobileMenu(false);
   }
 
+  async function logout() {
+    await crmApi("/auth/logout", { method: "POST", body: "{}" }).catch(() => undefined);
+    window.location.reload();
+  }
+
   if (loginRequired) return <LoginView />;
 
   return (
@@ -396,7 +369,8 @@ export default function App() {
           <div className="profile">
             <span className="profile-avatar">MI</span>
             <div><b>Administrador</b><small>Conta principal</small></div>
-            <MoreHorizontal size={18} />
+            <button className="profile-menu-button" onClick={() => setProfileMenu((open) => !open)} aria-label="Opções da conta"><MoreHorizontal size={18} /></button>
+            {profileMenu && <div className="profile-menu"><button onClick={() => navigate("team")}>Gerenciar usuários</button><button onClick={logout}>Sair do sistema</button></div>}
           </div>
         </div>
       </aside>
@@ -437,6 +411,7 @@ export default function App() {
             onSelect={(id) => { setSelectedId(id); setMobileChat(true); }}
             onDraft={setDraft}
             onSend={sendMessage}
+            onMedia={sendMedia}
             onConfirm={confirmPayment}
             onResume={resumeAi}
             mobileOpen={mobileChat}
@@ -450,7 +425,7 @@ export default function App() {
         {section === "ai" && <AiView onConfigure={() => setSection("settings")} />}
         {section === "payments" && <PaymentsView conversations={conversations} onOpen={(id) => { setSelectedId(id); setSection("inbox"); }} />}
         {section === "reports" && <ReportsView conversations={conversations} />}
-        {section === "team" && <ModuleEmptyView icon={Users} title="Equipe e permissões" description="Cadastre pessoas, setores e regras de acesso quando o módulo de equipe estiver conectado ao backend." action="Novo usuário" />}
+        {section === "team" && <TeamView showNotice={showNotice} />}
         {section === "connection" && <ConnectionView apiOnline={apiOnline} showNotice={showNotice} />}
         {section === "settings" && <SettingsView apiOnline={apiOnline} showNotice={showNotice} />}
       </main>
@@ -487,9 +462,9 @@ function LoginView() {
       <section className="login-card">
         <div className="login-brand"><span><MessageCircle size={25} /></span><div><strong>Atende</strong><b>CRM</b></div></div>
         <h1>Entrar no painel</h1>
-        <p>Use o acesso administrativo configurado no servidor.</p>
+        <p>Entre com o administrador do servidor ou com o e-mail cadastrado pela equipe.</p>
         <form onSubmit={login}>
-          <label>Usuário<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} /></label>
+          <label>Usuário ou e-mail<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} /></label>
           <label>Senha<input autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus /></label>
           {error && <div className="login-error">{error}</div>}
           <button type="submit" disabled={loading || !username.trim() || !password}>{loading ? <LoaderCircle className="spin" size={18} /> : <ShieldCheck size={18} />}{loading ? "Entrando..." : "Entrar"}</button>
@@ -567,6 +542,7 @@ type InboxProps = {
   onSelect: (id: string) => void;
   onDraft: (value: string) => void;
   onSend: () => void;
+  onMedia: (file: File) => void;
   onConfirm: () => void;
   onResume: () => void;
   mobileOpen: boolean;
@@ -575,6 +551,7 @@ type InboxProps = {
 
 function InboxView(props: InboxProps) {
   const { selected } = props;
+  const [chatMenu, setChatMenu] = useState(false);
   return (
     <div className="inbox-layout">
       <section className="conversation-column">
@@ -604,7 +581,8 @@ function InboxView(props: InboxProps) {
             <span className="avatar large">{initials(selected.contact_name)}</span>
             <div><h3>{selected.contact_name || "Cliente"}</h3><p>{phone(selected.phone)} · WhatsApp</p></div>
             <span className={`ai-status ${selected.ai_mode}`}><Bot size={15} />{aiText[selected.ai_mode]}</span>
-            <button className="icon-button"><MoreHorizontal size={19} /></button>
+            <button className="icon-button" onClick={() => setChatMenu((open) => !open)} aria-label="Opções da conversa"><MoreHorizontal size={19} /></button>
+            {chatMenu && <div className="chat-options"><button onClick={() => { props.onResume(); setChatMenu(false); }} disabled={selected.ai_mode === "autonomous"}>Retomar atendimento da IA</button><button onClick={() => setChatMenu(false)}>Fechar menu</button></div>}
           </div>
           {selected.status === "awaiting_payment_confirmation" && (
             <div className="handoff-banner"><span><ShieldCheck size={20} /></span><div><b>Intervenção humana necessária</b><p>O cliente informou o pagamento. Confira o Pix no banco antes de liberar o acesso.</p></div></div>
@@ -615,7 +593,11 @@ function InboxView(props: InboxProps) {
             {props.messages.map((message) => (
               <div className={`message-row ${message.direction}`} key={message.id}>
                 <div className="bubble">
-                  {message.media_type && <div className="media-preview"><FileText size={22} /><span>{message.media_type === "image" ? "Comprovante recebido" : `Mídia: ${message.media_type}`}</span></div>}
+                  {message.media_type === "image" && message.media_url && <a className="media-content" href={message.media_url} target="_blank" rel="noreferrer"><img src={message.media_url} alt={message.file_name || "Imagem recebida"} /></a>}
+                  {message.media_type === "video" && message.media_url && <video className="media-content" src={message.media_url} controls />}
+                  {message.media_type === "audio" && message.media_url && <audio className="audio-content" src={message.media_url} controls />}
+                  {message.media_type === "document" && message.media_url && <a className="document-content" href={message.media_url} download={message.file_name || "documento"}><FileText size={20} /><span>{message.file_name || "Baixar documento"}</span></a>}
+                  {message.media_type && !message.media_url && <div className="media-preview"><FileText size={22} /><span>{message.media_type === "image" ? "Imagem recebida" : `Mídia: ${message.media_type}`}</span></div>}
                   <p>{message.content}</p>
                   <span className="message-meta">{message.actor === "ai" && <><Bot size={12} /> IA · </>}{message.actor === "human" && <>Você · </>}{clock(message.created_at)}{message.direction === "out" && <CheckCheck size={13} />}</span>
                 </div>
@@ -623,6 +605,7 @@ function InboxView(props: InboxProps) {
             ))}
           </div>
           <div className="composer">
+            <label className={`attachment-button ${props.sending ? "disabled" : ""}`} title="Enviar imagem, áudio, vídeo ou documento"><Paperclip size={18} /><input type="file" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" disabled={props.sending} onChange={(event: ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (file) props.onMedia(file); event.target.value = ""; }} /></label>
             <textarea value={props.draft} onChange={(e) => props.onDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); props.onSend(); } }} placeholder="Digite uma mensagem como atendente humano..." rows={1} />
             <button className="send-button" onClick={props.onSend} disabled={!props.draft.trim() || props.sending}>{props.sending ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}</button>
           </div>
@@ -671,6 +654,28 @@ function ModuleEmptyView({ icon: Icon, title, description, action }: { icon: Com
   return <div className="page module-page"><PageIntro title={title} description={description} action={action} icon={Icon} /><div className="panel module-empty"><span><Icon size={28} /></span><h3>Módulo sem registros</h3><p>Esta área faz parte do CRM original. Ela está visível, mas só será liberada quando houver persistência e regras correspondentes no backend.</p></div></div>;
 }
 
+function TeamView({ showNotice }: { showNotice: (text: string) => void }) {
+  const [users, setUsers] = useState<CrmUser[]>([]);
+  const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [role, setRole] = useState("agent");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { crmApi<CrmUser[]>("/users").then(setUsers).catch((error) => showNotice(error instanceof Error ? error.message : "Não foi possível carregar usuários.")); }, []);
+  async function create(event: FormEvent) {
+    event.preventDefault(); if (!name.trim() || !email.trim() || password.length < 8 || saving) return; setSaving(true);
+    try {
+      const user = await crmApi<CrmUser>("/users", { method: "POST", body: JSON.stringify({ name, email, password, role }) });
+      setUsers((old) => [...old, user].sort((a, b) => a.name.localeCompare(b.name))); setName(""); setEmail(""); setPassword(""); showNotice("Usuário criado. Ele já pode entrar com o e-mail e a senha cadastrados.");
+    } catch (error) { showNotice(error instanceof Error ? error.message : "Não foi possível criar o usuário."); } finally { setSaving(false); }
+  }
+  async function toggle(user: CrmUser) {
+    try { const updated = await crmApi<CrmUser>(`/users/${user.id}`, { method: "PUT", body: JSON.stringify({ active: !user.active }) }); setUsers((old) => old.map((item) => item.id === user.id ? updated : item)); showNotice(updated.active ? "Usuário ativado." : "Usuário desativado."); }
+    catch (error) { showNotice(error instanceof Error ? error.message : "Não foi possível atualizar o usuário."); }
+  }
+  return <div className="page module-page"><PageIntro title="Equipe e permissões" description="Crie acessos reais para administradores, supervisores e atendentes." />
+    <form className="panel user-form" onSubmit={create}><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>E-mail<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>Senha<input type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 8 caracteres" required /></label><label>Perfil<select value={role} onChange={(e) => setRole(e.target.value)}><option value="agent">Atendente</option><option value="supervisor">Supervisor</option><option value="finance">Financeiro</option><option value="marketing">Marketing</option><option value="admin">Administrador</option></select></label><button className="module-action" disabled={saving}>{saving ? "Criando..." : "Criar usuário"}</button></form>
+    <div className="panel user-list"><div className="data-head"><span>Usuário</span><span>E-mail</span><span>Perfil</span><span>Status</span></div>{users.map((user) => <div className="data-row" key={user.id}><span className="person-cell"><i className="avatar">{initials(user.name)}</i><b>{user.name}</b></span><span>{user.email}</span><span>{user.role}</span><button className={`user-state ${user.active ? "active" : ""}`} onClick={() => toggle(user)}>{user.active ? "Ativo" : "Inativo"}</button></div>)}{!users.length && <div className="truthful-empty">Nenhum usuário cadastrado no banco.</div>}</div>
+  </div>;
+}
+
 function AutomationsView() {
   const rules = [
     ["Atendimento automático por IA", "Nova mensagem", "A IA responde usando somente o contexto autorizado."],
@@ -681,7 +686,12 @@ function AutomationsView() {
 }
 
 function AiView({ onConfigure }: { onConfigure: () => void }) {
-  return <div className="page module-page"><PageIntro title="Inteligência artificial" description="Agente conectado ao contexto real da empresa." /><div className="panel ai-module"><span><Sparkles size={24} /></span><div><strong>Atendimento comercial</strong><small>Agente multimodal · Gemini</small></div><em>Publicado</em></div><div className="panel ai-rules"><h3>Regras obrigatórias</h3><p>✓ Não confirmar pagamento automaticamente</p><p>✓ Não inventar preço, prazo ou política</p><p>✓ Transferir para uma pessoa em caso de incerteza</p><button className="module-action" onClick={onConfigure}><Settings size={15} />Configurar agente</button></div></div>;
+  const [status, setStatus] = useState<{ enabled: boolean; configured: boolean; model: string } | null>(null);
+  const [testing, setTesting] = useState(false); const [answer, setAnswer] = useState(""); const [error, setError] = useState("");
+  useEffect(() => { crmApi<{ enabled: boolean; configured: boolean; model: string }>("/ai/status").then(setStatus).catch((reason) => setError(reason instanceof Error ? reason.message : "Falha ao consultar Gemini")); }, []);
+  async function testAgent() { setTesting(true); setError(""); setAnswer(""); try { const result = await crmApi<{ answer: string }>("/ai/test", { method: "POST", body: JSON.stringify({ message: "Olá, explique brevemente como você pode atender um cliente desta empresa." }) }); setAnswer(result.answer); } catch (reason) { setError(reason instanceof Error ? reason.message : "Falha no teste do Gemini"); } finally { setTesting(false); } }
+  const operational = !!status?.enabled && !!status?.configured;
+  return <div className="page module-page"><PageIntro title="Inteligência artificial" description="Estado real do agente conectado ao backend." /><div className="panel ai-module"><span><Sparkles size={24} /></span><div><strong>Atendimento comercial</strong><small>{status ? `${status.model} · texto, imagem, áudio e vídeo` : "Consultando backend..."}</small></div><em className={operational ? "" : "offline"}>{operational ? "Operacional" : "Não configurado"}</em></div><div className="panel ai-rules"><h3>Diagnóstico do Gemini</h3><p>API habilitada: {status?.enabled ? "✓ Sim" : "✕ Não"}</p><p>Chave configurada: {status?.configured ? "✓ Sim" : "✕ Não"}</p><p>Modelo: {status?.model || "—"}</p>{error && <div className="ai-test-error">{error}</div>}{answer && <div className="ai-test-answer"><b>Resposta real do Gemini</b><p>{answer}</p></div>}<div className="ai-actions"><button className="module-action" onClick={testAgent} disabled={testing || !operational}>{testing ? "Testando..." : "Testar Gemini agora"}</button><button className="secondary-action compact" onClick={onConfigure}><Settings size={15} />Configurar contexto</button></div></div></div>;
 }
 
 function ReportsView({ conversations }: { conversations: Conversation[] }) {

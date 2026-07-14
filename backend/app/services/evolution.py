@@ -17,6 +17,24 @@ class EvolutionClient:
             response.raise_for_status()
             return response.json()
 
+    async def send_media(
+        self, phone: str, media_type: str, mime_type: str, media_base64: str,
+        file_name: str, caption: str = "",
+    ) -> dict:
+        url = f"{self.settings.evolution_base_url}/message/sendMedia/{self.settings.evolution_instance}"
+        payload = {
+            "number": phone,
+            "mediatype": media_type,
+            "mimetype": mime_type,
+            "caption": caption,
+            "media": media_base64,
+            "fileName": file_name,
+        }
+        async with httpx.AsyncClient(timeout=90) as client:
+            response = await client.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            return response.json()
+
     async def typing(self, phone: str, seconds: int = 2) -> None:
         url = f"{self.settings.evolution_base_url}/chat/sendPresence/{self.settings.evolution_instance}"
         payload = {"number": phone, "presence": "composing", "delay": seconds * 1000}

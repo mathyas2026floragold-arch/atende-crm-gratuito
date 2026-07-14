@@ -34,7 +34,10 @@ async def process_message(event: dict) -> None:
         company["id"], event["phone"], event["name"], event.get("lid")
     )
     conversation = await repository.open_conversation(company["id"], contact["id"], channel["id"])
-    saved = await repository.save_message(conversation["id"], "in", event["text"], event["external_id"], event["media_type"])
+    saved = await repository.save_message(
+        conversation["id"], "in", event["text"], event["external_id"], event["media_type"],
+        event.get("media_url"), event.get("mime_type"), event.get("file_name"), "customer",
+    )
     if not saved:
         return
 
@@ -49,7 +52,7 @@ async def process_message(event: dict) -> None:
         await repository.pause_for_payment(conversation["id"], detection.reason or "payment")
         reply = "Recebi. Vou encaminhar agora para a equipe conferir o Pix e liberar seu acesso."
         await evolution.send_text(event["phone"], reply)
-        await repository.save_message(conversation["id"], "out", reply, None)
+        await repository.save_message(conversation["id"], "out", reply, None, actor="ai")
         return
 
     if conversation["ai_mode"] != "autonomous" or not get_settings().ai_enabled:
@@ -60,13 +63,18 @@ async def process_message(event: dict) -> None:
     messages = [dict(row) for row in reversed(await repository.history(conversation["id"]))]
     try:
         answer = await gemini.answer(event["text"], messages, context, event.get("media_base64"), event.get("mime_type"))
-    except Exception:
-        # Uma falha temporária ou chave inválida do Gemini não pode paralisar o WhatsApp.
-        answer = gemini.demo_answer(event["text"])
+    except Exception as error:
+        # Não simula IA quando o Gemini está indisponível. Pausa a automação e
+        # deixa um motivo auditável para um humano assumir a conversa.
+        await db().execute(
+            "UPDATE conversations SET ai_mode='paused',handoff_reason='ai_error',updated_at=now() WHERE id=$1",
+            conversation["id"],
+        )
+        answer = "Tive uma instabilidade no atendimento automático. Vou encaminhar sua conversa para nossa equipe continuar por aqui."
     try:
         await evolution.typing(event["phone"], 2)
     except Exception:
         # O indicador de digitação é apenas visual; a mensagem ainda deve ser enviada.
         pass
     await evolution.send_text(event["phone"], answer)
-    await repository.save_message(conversation["id"], "out", answer, None)
+    await repository.save_message(conversation["id"], "out", answer, None, actor="ai")

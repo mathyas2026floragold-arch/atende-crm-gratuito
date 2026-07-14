@@ -1,11 +1,16 @@
 import base64
 import os
 import unittest
-from app.auth import create_admin_session, is_admin_authorized, is_admin_session
+from app.auth import create_admin_session, hash_password, is_admin_authorized, is_admin_session, verify_password
 from app.config import get_settings
 
 
 class AdminAuthorizationTests(unittest.TestCase):
+    def test_hashes_and_verifies_user_password(self):
+        encoded = hash_password("senha-segura-123")
+        self.assertNotIn("senha-segura-123", encoded)
+        self.assertTrue(verify_password("senha-segura-123", encoded))
+        self.assertFalse(verify_password("senha-errada", encoded))
     def setUp(self):
         self.original = {key: os.environ.get(key) for key in ("APP_SECRET", "CRM_ADMIN_USER", "CRM_ADMIN_PASSWORD")}
         os.environ["APP_SECRET"] = "token-interno"

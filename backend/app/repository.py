@@ -41,11 +41,16 @@ async def open_conversation(company_id: UUID, contact_id: UUID, channel_id: UUID
     )
 
 
-async def save_message(conversation_id: UUID, direction: str, content: str, external_id: str | None, media_type: str | None = None):
+async def save_message(
+    conversation_id: UUID, direction: str, content: str, external_id: str | None,
+    media_type: str | None = None, media_url: str | None = None,
+    mime_type: str | None = None, file_name: str | None = None, actor: str | None = None,
+):
     row = await db().fetchrow(
-        """INSERT INTO messages(conversation_id,direction,content,external_id,media_type,status)
-        VALUES($1,$2,$3,$4,$5,'received') ON CONFLICT(external_id) DO NOTHING RETURNING *""",
-        conversation_id, direction, content, external_id, media_type,
+        """INSERT INTO messages(conversation_id,direction,content,external_id,media_type,media_url,mime_type,file_name,status,actor)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(external_id) DO NOTHING RETURNING *""",
+        conversation_id, direction, content, external_id, media_type, media_url, mime_type, file_name,
+        "received" if direction == "in" else "sent", actor,
     )
     if row:
         await db().execute(
