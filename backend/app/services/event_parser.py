@@ -18,7 +18,13 @@ def extract_event(payload: dict) -> dict | None:
         None,
     )
     remote_jid = str(key.get("remoteJid") or "")
-    remote_jid_alt = str(key.get("remoteJidAlt") or data.get("remoteJidAlt") or "")
+    remote_jid_alt = str(
+        key.get("remoteJidAlt")
+        or key.get("senderPn")
+        or data.get("remoteJidAlt")
+        or data.get("senderPn")
+        or ""
+    )
     remote_phone = remote_jid.split("@")[0]
     alternate_phone = remote_jid_alt.split("@")[0]
 

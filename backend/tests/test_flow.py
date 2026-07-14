@@ -44,6 +44,24 @@ class WebhookParsingTests(unittest.TestCase):
         self.assertEqual(event["phone"], "5584999999999")
         self.assertEqual(event["lid"], "41854926090386")
 
+    def test_uses_sender_pn_when_remote_jid_alt_is_missing(self):
+        payload = {
+            "event": "MESSAGES_UPSERT",
+            "instance": "empresa-principal",
+            "data": {
+                "key": {
+                    "fromMe": False,
+                    "remoteJid": "41854926090386@lid",
+                    "senderPn": "5584999999999@s.whatsapp.net",
+                    "id": "MSG3",
+                },
+                "message": {"conversation": "Teste"},
+            },
+        }
+        event = extract_event(payload)
+        self.assertEqual(event["phone"], "5584999999999")
+        self.assertEqual(event["lid"], "41854926090386")
+
 
 if __name__ == "__main__":
     unittest.main()
