@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type ComponentType, type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Bot,
@@ -7,13 +7,18 @@ import {
   ChevronDown,
   CircleDollarSign,
   Clock3,
+  ContactRound,
+  Download,
   FileText,
   Inbox,
+  KanbanSquare,
   LoaderCircle,
+  Megaphone,
   Menu,
   MessageCircle,
   MoreHorizontal,
   Play,
+  PlugZap,
   QrCode,
   RefreshCw,
   Search,
@@ -23,6 +28,7 @@ import {
   Sparkles,
   UserRound,
   Users,
+  Workflow,
   Wifi,
   X,
   Zap,
@@ -123,12 +129,28 @@ const DEMO_MESSAGES: Record<string, ChatMessage[]> = {
 };
 
 const navItems = [
-  { id: "dashboard", label: "Visão geral", icon: BarChart3 },
+  { id: "dashboard", label: "Dashboard", icon: BarChart3 },
   { id: "inbox", label: "Atendimentos", icon: Inbox },
-  { id: "payments", label: "Pagamentos", icon: CircleDollarSign },
-  { id: "connection", label: "Conexão WhatsApp", icon: QrCode },
+  { id: "funnel", label: "Funil", icon: KanbanSquare },
+  { id: "contacts", label: "Contatos", icon: ContactRound },
+  { id: "campaigns", label: "Campanhas", icon: Megaphone },
+  { id: "automations", label: "Automações", icon: Workflow },
+  { id: "ai", label: "Inteligência artificial", icon: Sparkles },
+  { id: "payments", label: "Financeiro", icon: CircleDollarSign },
+  { id: "reports", label: "Relatórios", icon: BarChart3 },
+  { id: "team", label: "Equipe", icon: Users },
+  { id: "connection", label: "Conexões", icon: PlugZap },
   { id: "settings", label: "Configurações", icon: Settings },
 ];
+
+const sectionDescriptions: Record<string, string> = {
+  dashboard: "Acompanhe sua operação em tempo real.", inbox: "Converse, distribua e acompanhe cada atendimento.",
+  funnel: "Acompanhe cada conversa até a conclusão.", contacts: "Base unificada de clientes e oportunidades.",
+  campaigns: "Comunicação segmentada e controle de envio.", automations: "Gatilhos, condições e ações da operação.",
+  ai: "Agentes, base de conhecimento e regras seguras.", payments: "Confirmações de Pix e liberações humanas.",
+  reports: "Indicadores operacionais, comerciais e financeiros.", team: "Usuários, setores e permissões.",
+  connection: "WhatsApp, webhooks e integrações.", settings: "Personalize o CRM e sua empresa.",
+};
 
 const statusText: Record<Status, string> = {
   new: "Novo",
@@ -362,7 +384,7 @@ export default function App() {
             <button key={id} className={section === id ? "active" : ""} onClick={() => navigate(id)}>
               <Icon size={19} />
               <span>{label}</span>
-              {id === "payments" && stats.pix > 0 && <em>{stats.pix}</em>}
+              {id === "inbox" && stats.pix > 0 && <em>{stats.pix}</em>}
             </button>
           ))}
         </nav>
@@ -386,7 +408,7 @@ export default function App() {
           <button className="menu-button" onClick={() => setMobileMenu(true)} aria-label="Abrir menu"><Menu size={21} /></button>
           <div>
             <h1>{navItems.find((item) => item.id === section)?.label}</h1>
-            <p>{section === "dashboard" ? "Acompanhe seu atendimento em tempo real" : section === "connection" ? "Conecte e monitore seu número" : "Gerencie sua operação em um só lugar"}</p>
+            <p>{sectionDescriptions[section]}</p>
           </div>
           <div className="topbar-actions">
             <span className={`mode-pill ${apiOnline ? "real" : "demo"}`}><span />{apiOnline ? "AO VIVO" : "OFFLINE"}</span>
@@ -421,7 +443,14 @@ export default function App() {
             onMobileBack={() => setMobileChat(false)}
           />
         )}
+        {section === "funnel" && <FunnelView conversations={conversations} onOpen={(id) => { setSelectedId(id); setSection("inbox"); }} />}
+        {section === "contacts" && <ContactsView conversations={conversations} onOpen={(id) => { setSelectedId(id); setSection("inbox"); }} />}
+        {section === "campaigns" && <ModuleEmptyView icon={Megaphone} title="Campanhas" description="Crie campanhas segmentadas sem misturar dados de demonstração com sua operação real." action="Nova campanha" />}
+        {section === "automations" && <AutomationsView />}
+        {section === "ai" && <AiView onConfigure={() => setSection("settings")} />}
         {section === "payments" && <PaymentsView conversations={conversations} onOpen={(id) => { setSelectedId(id); setSection("inbox"); }} />}
+        {section === "reports" && <ReportsView conversations={conversations} />}
+        {section === "team" && <ModuleEmptyView icon={Users} title="Equipe e permissões" description="Cadastre pessoas, setores e regras de acesso quando o módulo de equipe estiver conectado ao backend." action="Novo usuário" />}
         {section === "connection" && <ConnectionView apiOnline={apiOnline} showNotice={showNotice} />}
         {section === "settings" && <SettingsView apiOnline={apiOnline} showNotice={showNotice} />}
       </main>
@@ -615,6 +644,55 @@ function InboxView(props: InboxProps) {
       </aside>
     </div>
   );
+}
+
+function PageIntro({ title, description, action, icon: Icon }: { title: string; description: string; action?: string; icon?: ComponentType<{ size?: number }> }) {
+  return <div className="module-intro"><div><h2>{title}</h2><p>{description}</p></div>{action && <button className="module-action" disabled>{Icon && <Icon size={16} />}{action}</button>}</div>;
+}
+
+function FunnelView({ conversations, onOpen }: { conversations: Conversation[]; onOpen: (id: string) => void }) {
+  const columns = [
+    { title: "Novos leads", values: conversations.filter((c) => c.status === "new") },
+    { title: "Em atendimento", values: conversations.filter((c) => c.status === "in_progress") },
+    { title: "Confirmação humana", values: conversations.filter((c) => c.status === "awaiting_payment_confirmation") },
+    { title: "Finalizados", values: conversations.filter((c) => c.status === "resolved") },
+  ];
+  return <div className="page module-page"><PageIntro title="Funil de atendimento" description="Acompanhe cada conversa até a conclusão." action="Nova oportunidade" />
+    <div className="funnel-board">{columns.map((column) => <section className="funnel-column" key={column.title}><header><strong>{column.title}</strong><span>{column.values.length}</span></header><div>{column.values.map((item) => <button key={item.id} onClick={() => onOpen(item.id)}><span className="avatar">{initials(item.contact_name)}</span><b>{item.contact_name || "Cliente"}</b><p>{item.last_message || "Sem mensagens"}</p><small>{aiText[item.ai_mode]} · {clock(item.updated_at)}</small></button>)}{!column.values.length && <p className="column-empty">Nenhum registro</p>}</div></section>)}</div>
+  </div>;
+}
+
+function ContactsView({ conversations, onOpen }: { conversations: Conversation[]; onOpen: (id: string) => void }) {
+  return <div className="page module-page"><PageIntro title="Contatos" description="Base unificada de clientes e oportunidades." action="Novo contato" />
+    <div className="panel data-panel"><div className="data-head"><span>Contato</span><span>WhatsApp</span><span>Etapa</span><span>Responsável</span></div>{conversations.map((item) => <button className="data-row" key={item.id} onClick={() => onOpen(item.id)}><span className="person-cell"><i className="avatar">{initials(item.contact_name)}</i><b>{item.contact_name || "Cliente"}</b></span><span>{phone(item.phone)}</span><span><i className={`status-chip ${item.status}`}>{statusText[item.status]}</i></span><span>{item.ai_mode === "autonomous" ? "IA" : "Humano"}</span></button>)}{!conversations.length && <div className="truthful-empty">Nenhum contato recebido pelo WhatsApp.</div>}</div>
+  </div>;
+}
+
+function ModuleEmptyView({ icon: Icon, title, description, action }: { icon: ComponentType<{ size?: number }>; title: string; description: string; action: string }) {
+  return <div className="page module-page"><PageIntro title={title} description={description} action={action} icon={Icon} /><div className="panel module-empty"><span><Icon size={28} /></span><h3>Módulo sem registros</h3><p>Esta área faz parte do CRM original. Ela está visível, mas só será liberada quando houver persistência e regras correspondentes no backend.</p></div></div>;
+}
+
+function AutomationsView() {
+  const rules = [
+    ["Atendimento automático por IA", "Nova mensagem", "A IA responde usando somente o contexto autorizado."],
+    ["Cliente informou pagamento", "Pix ou comprovante", "Pausa a IA e encaminha para confirmação humana."],
+    ["Pix confirmado pelo humano", "Confirmação no CRM", "Envia o acesso e conclui a conversa."],
+  ];
+  return <div className="page module-page"><PageIntro title="Automações" description="Gatilhos e ações que já fazem parte da operação real." /> <div className="automation-list">{rules.map((r, index) => <article className="panel automation-card" key={r[0]}><span>{index + 1}</span><div><strong>{r[0]}</strong><small>Gatilho: {r[1]}</small><p>{r[2]}</p></div><em>Ativa</em></article>)}</div></div>;
+}
+
+function AiView({ onConfigure }: { onConfigure: () => void }) {
+  return <div className="page module-page"><PageIntro title="Inteligência artificial" description="Agente conectado ao contexto real da empresa." /><div className="panel ai-module"><span><Sparkles size={24} /></span><div><strong>Atendimento comercial</strong><small>Agente multimodal · Gemini</small></div><em>Publicado</em></div><div className="panel ai-rules"><h3>Regras obrigatórias</h3><p>✓ Não confirmar pagamento automaticamente</p><p>✓ Não inventar preço, prazo ou política</p><p>✓ Transferir para uma pessoa em caso de incerteza</p><button className="module-action" onClick={onConfigure}><Settings size={15} />Configurar agente</button></div></div>;
+}
+
+function ReportsView({ conversations }: { conversations: Conversation[] }) {
+  const cards = [
+    ["Atendimento", `${conversations.length} conversas`],
+    ["IA", `${conversations.filter((c) => c.ai_mode === "autonomous").length} automáticas`],
+    ["Financeiro", `${conversations.filter((c) => c.status === "awaiting_payment_confirmation").length} pendências`],
+    ["Finalizados", `${conversations.filter((c) => c.status === "resolved").length} concluídos`],
+  ];
+  return <div className="page module-page"><PageIntro title="Relatórios" description="Indicadores calculados somente com dados reais." action="Exportar relatório" icon={Download} /><div className="report-grid">{cards.map((card) => <article className="panel report-card" key={card[0]}><BarChart3 size={21} /><strong>{card[0]}</strong><p>{card[1]}</p></article>)}</div></div>;
 }
 
 function PaymentsView({ conversations, onOpen }: { conversations: Conversation[]; onOpen: (id: string) => void }) {
