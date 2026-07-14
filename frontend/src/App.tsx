@@ -216,7 +216,7 @@ export default function App() {
         if (active) {
           setApiOnline(false);
           setApiError(error instanceof Error ? error.message : "Backend indisponível");
-          if (error instanceof Error && (error as Error & { status?: number }).status === 401) setLoginRequired(true);
+          setLoginRequired(true);
         }
       } finally {
         if (active) setLoading(false);
