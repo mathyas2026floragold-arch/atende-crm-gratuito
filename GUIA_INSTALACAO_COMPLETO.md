@@ -305,7 +305,7 @@ Abra as variáveis de execução do serviço `atende-crm` e preencha:
 | `EVOLUTION_INSTANCE` | `empresa-principal` |
 | `EVOLUTION_WEBHOOK_TOKEN` | outro token aleatório longo |
 | `GEMINI_API_KEY` | chave do Google AI Studio |
-| `GEMINI_MODEL` | `gemini-2.5-flash` |
+| `GEMINI_MODEL` | `gemini-3.5-flash` |
 | `AI_ENABLED` | `true` |
 | `AI_DEBOUNCE_SECONDS` | `8` |
 | `DEFAULT_COMPANY_SLUG` | `minha-empresa` |

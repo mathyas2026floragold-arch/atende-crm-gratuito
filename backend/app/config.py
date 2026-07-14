@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     evolution_webhook_token: str = "development-webhook"
     frontend_dist: str = "/app/frontend-dist"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash"
     ai_enabled: bool = True
     ai_debounce_seconds: int = 8
     default_company_slug: str = "minha-empresa"
