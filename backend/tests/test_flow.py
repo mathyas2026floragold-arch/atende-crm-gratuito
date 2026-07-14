@@ -25,6 +25,25 @@ class WebhookParsingTests(unittest.TestCase):
         self.assertEqual(event["phone"], "5584999999999")
         self.assertEqual(event["text"], "Olá")
 
+    def test_prefers_real_phone_when_whatsapp_sends_lid(self):
+        payload = {
+            "event": "messages.upsert",
+            "instance": "empresa-principal",
+            "data": {
+                "key": {
+                    "fromMe": False,
+                    "remoteJid": "41854926090386@lid",
+                    "remoteJidAlt": "5584999999999@s.whatsapp.net",
+                    "id": "MSG2",
+                },
+                "pushName": "Cliente",
+                "message": {"conversation": "Olá"},
+            },
+        }
+        event = extract_event(payload)
+        self.assertEqual(event["phone"], "5584999999999")
+        self.assertEqual(event["lid"], "41854926090386")
+
 
 if __name__ == "__main__":
     unittest.main()

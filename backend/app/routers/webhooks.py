@@ -30,7 +30,9 @@ async def process_message(event: dict) -> None:
         "SELECT id FROM whatsapp_connections WHERE company_id=$1 AND instance_name=$2",
         company["id"], event["instance"],
     )
-    contact = await repository.upsert_contact(company["id"], event["phone"], event["name"])
+    contact = await repository.upsert_contact(
+        company["id"], event["phone"], event["name"], event.get("lid")
+    )
     conversation = await repository.open_conversation(company["id"], contact["id"], channel["id"])
     saved = await repository.save_message(conversation["id"], "in", event["text"], event["external_id"], event["media_type"])
     if not saved:

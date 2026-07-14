@@ -9,7 +9,17 @@ async def company_by_instance(instance: str):
     )
 
 
-async def upsert_contact(company_id: UUID, phone: str, name: str | None):
+async def upsert_contact(company_id: UUID, phone: str, name: str | None, previous_phone: str | None = None):
+    if previous_phone and previous_phone != phone:
+        migrated = await db().fetchrow(
+            """UPDATE contacts SET phone=$2,name=COALESCE($3,name),updated_at=now()
+            WHERE company_id=$1 AND phone=$4
+              AND NOT EXISTS(SELECT 1 FROM contacts WHERE company_id=$1 AND phone=$2)
+            RETURNING *""",
+            company_id, phone, name, previous_phone,
+        )
+        if migrated:
+            return migrated
     return await db().fetchrow(
         """INSERT INTO contacts(company_id, phone, name) VALUES($1,$2,$3)
         ON CONFLICT(company_id,phone) DO UPDATE SET name=COALESCE(EXCLUDED.name,contacts.name),updated_at=now()

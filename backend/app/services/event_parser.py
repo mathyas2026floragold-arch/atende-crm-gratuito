@@ -17,9 +17,21 @@ def extract_event(payload: dict) -> dict | None:
         (kind for kind, field in [("image", "imageMessage"), ("audio", "audioMessage"), ("video", "videoMessage"), ("document", "documentMessage")] if field in message),
         None,
     )
+    remote_jid = str(key.get("remoteJid") or "")
+    remote_jid_alt = str(key.get("remoteJidAlt") or data.get("remoteJidAlt") or "")
+    remote_phone = remote_jid.split("@")[0]
+    alternate_phone = remote_jid_alt.split("@")[0]
+
+    # Versões recentes do WhatsApp podem entregar um identificador LID em
+    # remoteJid. Ele identifica o contato, mas não é aceito pelo endpoint
+    # sendText da Evolution. Quando presente, remoteJidAlt contém o telefone.
+    phone = alternate_phone if remote_jid.endswith("@lid") and alternate_phone else remote_phone
+    lid = remote_phone if remote_jid.endswith("@lid") else None
+
     return {
         "instance": payload.get("instance") or data.get("instance"),
-        "phone": str(key.get("remoteJid", "")).split("@")[0],
+        "phone": phone,
+        "lid": lid,
         "name": data.get("pushName"),
         "external_id": key.get("id"),
         "text": text,
