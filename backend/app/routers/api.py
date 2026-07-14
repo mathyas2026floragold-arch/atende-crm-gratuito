@@ -169,7 +169,9 @@ async def test_ai(body: AiTest, authorization: str | None = Header(default=None)
     try:
         answer = await GeminiClient().answer(body.message, [], company["ai_context"] or "", None, None)
     except Exception as error:
-        raise HTTPException(502, f"Gemini indisponível: {str(error)[:180]}") from error
+        # Nunca devolve URL, cabeçalhos ou chave da API ao navegador.
+        safe_message = str(error) if error.__class__.__name__ == "GeminiServiceError" else "Falha interna ao consultar o Gemini."
+        raise HTTPException(502, safe_message) from error
     return {"ok": True, "answer": answer, "model": get_settings().gemini_model}
 
 
